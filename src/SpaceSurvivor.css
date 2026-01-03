@@ -1,0 +1,274 @@
+/* ... (Mantém o CSS anterior para body, game-container, etc.) ... */
+
+/* REPETINDO O BÁSICO PARA CONTEXTO */
+body {
+  margin: 0;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  font-family: 'Courier New', Courier, monospace;
+}
+
+.game-container {
+  width: 800px;
+  height: 600px;
+  position: relative;
+  border: 4px solid #555;
+  background-color: rgba(0, 0, 0, 0.3); 
+  box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+}
+
+.menu-overlay, .pause-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.85); /* Um pouco mais escuro para as opções */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 20;
+  backdrop-filter: blur(4px);
+}
+
+/* --- ESTILOS DE TEXTO --- */
+.game-title {
+  font-size: 4rem;
+  color: #00ff00;
+  text-shadow: 4px 4px #003300;
+  margin-bottom: 50px;
+  letter-spacing: 5px;
+  text-transform: uppercase;
+}
+
+.pause-title {
+  font-size: 3rem;
+  color: white;
+  margin-bottom: 40px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+}
+
+/* --- BOTÕES NORMAIS --- */
+.menu-button {
+  background: transparent;
+  color: white;
+  border: 2px solid white;
+  padding: 15px 40px;
+  font-size: 1.5rem;
+  font-family: inherit;
+  margin: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  width: 250px;
+  text-transform: uppercase;
+}
+
+.menu-button:hover {
+  background-color: #00ff00;
+  color: black;
+  border-color: #00ff00;
+  transform: scale(1.05);
+  box-shadow: 0 0 15px #00ff00;
+}
+
+/* --- NOVO: ESTILOS DAS OPÇÕES --- */
+.option-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 400px;
+  margin-bottom: 30px;
+  border-bottom: 1px solid #333;
+  padding-bottom: 10px;
+}
+
+.option-label {
+  font-size: 1.5rem;
+  color: #aaa;
+}
+
+.option-toggle {
+  background: transparent;
+  border: 2px solid #555;
+  color: #555;
+  padding: 5px 20px;
+  font-size: 1.2rem;
+  cursor: pointer;
+  font-family: inherit;
+  width: 100px;
+  transition: all 0.3s;
+}
+
+/* Estado Ativo (ON) */
+.option-toggle.active {
+  border-color: #00ff00;
+  color: #00ff00;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+  text-shadow: 0 0 5px #00ff00;
+}
+
+/* Estado Inativo (Hover) */
+.option-toggle:not(.active):hover {
+  border-color: #fff;
+  color: #fff;
+}
+
+.back-btn {
+  margin-top: 30px;
+  border-color: #ff4444; /* Botão de voltar ligeiramente avermelhado */
+}
+
+.back-btn:hover {
+  background-color: #ff4444;
+  border-color: #ff4444;
+  color: white;
+  box-shadow: 0 0 15px #ff4444;
+}
+
+/* --- CANVAS --- */
+.game-canvas {
+  width: 800px;
+  height: 600px;
+  background-color: transparent;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 10;
+  cursor: crosshair; 
+}
+
+/* --- HUD: Vidas (Esquerda) --- */
+.lives-display {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  font-size: 2rem;
+  z-index: 15;
+  color: #ff0055; /* Cor rosa/vermelha para os corações */
+  text-shadow: 0 0 10px #ff0055;
+  display: flex;
+  gap: 5px; /* Espaço entre os corações */
+}
+
+/* Efeito quando a nave leva dano (O ecrã pisca vermelho) */
+@keyframes damage-flash {
+  0% { background-color: rgba(255, 0, 0, 0.3); }
+  100% { background-color: transparent; }
+}
+
+.damage-effect {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 18;
+  animation: damage-flash 0.2s ease-out;
+}
+
+/* --- HUD (Pontuação durante o jogo) --- */
+.game-hud {
+  position: absolute;
+  top: 20px;
+  right: 20px; /* Canto superior direito */
+  color: white;
+  font-size: 1.5rem;
+  z-index: 15; /* Acima do jogo, abaixo dos menus */
+  text-shadow: 0 0 10px #00ff00;
+  pointer-events: none; /* O rato ignora isto */
+}
+
+/* --- GAME OVER SCREEN --- */
+.game-over-overlay {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(50, 0, 0, 0.8); /* Fundo avermelhado */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 25; /* O mais alto de todos */
+  backdrop-filter: blur(5px);
+  border: 4px solid red; /* Borda vermelha de perigo */
+}
+
+.game-over-title {
+  font-size: 5rem;
+  color: red;
+  text-shadow: 0 0 20px darkred;
+  margin-bottom: 20px;
+  text-transform: uppercase;
+  letter-spacing: 10px;
+}
+
+.final-score {
+  font-size: 2rem;
+  color: white;
+  margin-bottom: 40px;
+}
+
+.new-record {
+  color: yellow;
+  font-size: 1.5rem;
+  margin-bottom: 20px;
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0% { opacity: 1; }
+  50% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+/* Pequeno ajuste no Menu Principal para mostrar o High Score */
+.high-score-display {
+  margin-top: 20px;
+  color: #ffff00;
+  font-size: 1.2rem;
+  text-shadow: 0 0 10px #ffff00;
+}
+
+/* --- SLIDER DE VOLUME --- */
+.volume-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+input[type=range] {
+  appearance: none;
+  -webkit-appearance: none; 
+  
+  width: 150px;
+  background: transparent;
+}
+
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 20px;
+  width: 20px;
+  background: #00ff00;
+  border: 2px solid white;
+  cursor: pointer;
+  margin-top: -8px; /* Centrar na linha */
+  box-shadow: 0 0 10px #00ff00;
+}
+
+input[type=range]::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 4px;
+  cursor: pointer;
+  background: #555;
+  border-radius: 2px;
+}
+
+input[type=range]:focus {
+  outline: none;
+}
