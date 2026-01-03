@@ -1,0 +1,17 @@
+{
+  "files": {
+    "main.css": "/space-survivor/static/css/main.9d2454b6.css",
+    "main.js": "/space-survivor/static/js/main.5e675767.js",
+    "static/media/music.mp3": "/space-survivor/static/media/music.bca61f6e229301628377.mp3",
+    "static/media/powerup.mp3": "/space-survivor/static/media/powerup.03576cbe12c67c9008af.mp3",
+    "static/media/explode.mp3": "/space-survivor/static/media/explode.b20c127eaa89d353cc18.mp3",
+    "static/media/shoot.mp3": "/space-survivor/static/media/shoot.2c266c2a7a73fea1301b.mp3",
+    "index.html": "/space-survivor/index.html",
+    "main.9d2454b6.css.map": "/space-survivor/static/css/main.9d2454b6.css.map",
+    "main.5e675767.js.map": "/space-survivor/static/js/main.5e675767.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.9d2454b6.css",
+    "static/js/main.5e675767.js"
+  ]
+}
