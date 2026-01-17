@@ -24,15 +24,21 @@ const SpaceSurvivor = () => {
   const [showOptions, setShowOptions] = useState(false);
   const [showShop, setShowShop] = useState(false); 
   
-  // LEADERBOARD
+  // LEADERBOARD & SUBMIT
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [leaderboardData, setLeaderboardData] = useState([]);
   const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(false);
   const [playerName, setPlayerName] = useState('');
-  const [scoreSubmitted, setScoreSubmitted] = useState(false);
+  
+  const [submitStatus, setSubmitStatus] = useState(null); 
+  const [submitMessage, setSubmitMessage] = useState('');
 
+  // CONFIGURAÇÕES
   const [language, setLanguage] = useState('en'); 
   const t = TRANSLATIONS[language]; 
+  const [motionBlur, setMotionBlur] = useState(true);
+  const [volume, setVolume] = useState(0.5);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
@@ -40,8 +46,6 @@ const SpaceSurvivor = () => {
   const [takeDamageEffect, setTakeDamageEffect] = useState(false);
 
   const [hasTripleShot, setHasTripleShot] = useState(false); 
-  const [motionBlur, setMotionBlur] = useState(true);
-  const [volume, setVolume] = useState(0.5);
 
   const [totalScrap, setTotalScrap] = useState(0); 
   const [runScrap, setRunScrap] = useState(0);     
@@ -50,6 +54,9 @@ const SpaceSurvivor = () => {
 
   const bgmRef = useRef(new Audio(musicFile));
   const canvasRef = useRef(null);
+  
+  // REF PARA CORRIGIR O BUG DO TEMPO NO MENU
+  const pauseStartRef = useRef(0);
 
   const gameState = useRef({
     playerX: GAME_WIDTH / 2,
@@ -71,6 +78,8 @@ const SpaceSurvivor = () => {
     tripleShotUntil: 0
   });
 
+  // --- FUNÇÕES AUXILIARES ---
+  
   const cycleLanguage = () => {
     const langs = Object.keys(TRANSLATIONS);
     const currentIndex = langs.indexOf(language);
@@ -85,6 +94,68 @@ const SpaceSurvivor = () => {
     audio.play().catch(e => console.log("Erro som:", e));
   };
 
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().then(() => {
+        if (navigator.keyboard && navigator.keyboard.lock) {
+            navigator.keyboard.lock(['Escape']).catch(e => console.log(e));
+        }
+      }).catch(err => {
+        console.error(`Error attempting to enable fullscreen: ${err.message}`);
+      });
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+        if (navigator.keyboard && navigator.keyboard.unlock) {
+            navigator.keyboard.unlock();
+        }
+      }
+    }
+  };
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement && navigator.keyboard && navigator.keyboard.unlock) {
+          navigator.keyboard.unlock();
+      }
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  // --- CORREÇÃO DO BUG DO TEMPO (FREEZE TIME) ---
+  useEffect(() => {
+    // Se o jogo não está a correr ou acabou, não fazemos nada
+    if (!isPlaying || isGameOver) return;
+
+    // Verifica se algum menu está aberto ou se está pausado
+    const isInterrupted = isPaused || showOptions || showShop || showLeaderboard;
+
+    if (isInterrupted) {
+        // O jogo parou: guardamos a hora atual
+        pauseStartRef.current = Date.now();
+    } else {
+        // O jogo voltou: calculamos quanto tempo esteve parado
+        if (pauseStartRef.current > 0) {
+            const timePaused = Date.now() - pauseStartRef.current;
+
+            // Adicionamos esse tempo aos contadores para "empurrá-los" para a frente
+            gameState.current.tripleShotUntil += timePaused;
+            gameState.current.invulnerableUntil += timePaused;
+            gameState.current.nextEnemySpawnTime += timePaused;
+            // Também ajustamos o startTime para a dificuldade não aumentar enquanto estamos no menu
+            gameState.current.startTime += timePaused;
+
+            // Reset da ref
+            pauseStartRef.current = 0;
+        }
+    }
+  }, [isPlaying, isGameOver, isPaused, showOptions, showShop, showLeaderboard]);
+
+
+  // --- INICIALIZAÇÃO ---
+
   useEffect(() => {
     const bgm = bgmRef.current;
     bgm.loop = true; bgm.volume = volume; 
@@ -95,6 +166,21 @@ const SpaceSurvivor = () => {
   }, []);
 
   useEffect(() => { bgmRef.current.volume = volume; }, [volume]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (document.fullscreenElement) {
+            return;
+        }
+        if (showOptions) setShowOptions(false);
+        else if (showLeaderboard) setShowLeaderboard(false);
+        else if (isPlaying && !isGameOver) setIsPaused((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPlaying, showOptions, isGameOver, showLeaderboard]);
 
   useEffect(() => {
     const savedScore = localStorage.getItem('spaceSurvivorHighScore');
@@ -143,32 +229,31 @@ const SpaceSurvivor = () => {
   };
 
   const submitScore = async () => {
-      // Validações básicas
-      if (!playerName || score === 0 || scoreSubmitted) return;
+      if (!playerName || score === 0 || submitStatus === 'success') return;
       
-      // Limpar o nome para usar como ID (remove espaços extra)
       const cleanName = playerName.trim();
       if (cleanName === "") return;
 
       try {
-          // Referência ao documento usando o NOME como ID
           const scoreRef = doc(db, "scores", cleanName);
           const docSnap = await getDoc(scoreRef);
 
           let shouldSave = false;
 
           if (docSnap.exists()) {
-              // O jogador já existe! Vamos ver se o score novo é melhor.
               const oldScore = docSnap.data().score;
               if (score > oldScore) {
-                  shouldSave = true; // Bateste o teu recorde pessoal!
+                  shouldSave = true; 
               } else {
-                  alert("Não bateste o teu recorde pessoal (" + oldScore + ").");
-                  setScoreSubmitted(true); // Bloqueia o botão na mesma
+                  setSubmitStatus('fail');
+                  setSubmitMessage(`${t.gameover.lowScore} (${oldScore})`);
+                  setTimeout(() => {
+                      setSubmitStatus(null);
+                      setSubmitMessage('');
+                  }, 3000);
                   return; 
               }
           } else {
-              // Jogador novo
               shouldSave = true;
           }
 
@@ -178,17 +263,16 @@ const SpaceSurvivor = () => {
                   score: score,
                   date: new Date()
               });
-              setScoreSubmitted(true);
+              setSubmitStatus('success');
+              setSubmitMessage(t.gameover.saved);
               localStorage.setItem('spaceSurvivorPlayerName', cleanName);
-              alert("Recorde Guardado!");
-              
-              // Atualizar a tabela localmente se estiver aberta (opcional)
               if (showLeaderboard) fetchLeaderboard();
           }
 
       } catch (e) {
           console.error("Erro ao gravar score: ", e);
-          alert("Erro ao conectar ao servidor.");
+          setSubmitStatus('fail');
+          setSubmitMessage(t.gameover.error);
       }
   };
 
@@ -251,7 +335,8 @@ const SpaceSurvivor = () => {
     gameState.current.isFiring = false; 
     
     setScore(0);
-    setScoreSubmitted(false);
+    setSubmitStatus(null);
+    setSubmitMessage('');
     setHasTripleShot(false);
     setIsGameOver(false);
     setIsPaused(false);
@@ -269,18 +354,6 @@ const SpaceSurvivor = () => {
   };
 
   const toggleOptions = () => setShowOptions(!showOptions);
-
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        if (showOptions) setShowOptions(false);
-        else if (showLeaderboard) setShowLeaderboard(false);
-        else if (isPlaying && !isGameOver) setIsPaused((prev) => !prev);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, showOptions, isGameOver, showLeaderboard]);
 
   const handlePlayerDamage = () => {
     gameState.current.currentLives -= 1;
@@ -345,6 +418,7 @@ const SpaceSurvivor = () => {
       }
   };
 
+  // --- RENDER LOOP ---
   useEffect(() => {
     if (!isPlaying || isPaused || showOptions || showShop || isGameOver || showLeaderboard) return;
 
@@ -570,7 +644,6 @@ const SpaceSurvivor = () => {
           <button className="menu-button" onClick={() => setShowShop(true)} style={{borderColor: '#39ff14', color: '#39ff14'}}>{t.menu.hangar}</button>
           <button className="menu-button" onClick={openLeaderboard} style={{borderColor: '#bc13fe', color: '#bc13fe'}}>{t.menu.leaderboard}</button>
           <button className="menu-button" onClick={toggleOptions}>{t.menu.options}</button>
-          <div className="high-score-display">{t.menu.highscore}: {highScore}</div>
         </div>
       )}
 
@@ -630,7 +703,7 @@ const SpaceSurvivor = () => {
       {isPlaying && isPaused && !showOptions && !showShop && !isGameOver && (
         <div className="pause-overlay"><h2 className="pause-title">{t.pause.title}</h2><button className="menu-button" onClick={() => setIsPaused(false)}>{t.pause.continue}</button><button className="menu-button" onClick={toggleOptions}>{t.menu.options}</button><button className="menu-button" onClick={handleQuit}>{t.pause.exit}</button></div>
       )}
-      {showOptions && <div className="menu-overlay"><h2 className="pause-title">{t.options.title}</h2><div className="option-row"><span className="option-label">{t.options.lang}</span><button className="option-toggle" style={{width: '120px'}} onClick={cycleLanguage}>{TRANSLATIONS[language].name}</button></div><div className="option-row"><span className="option-label">{t.options.blur}</span><button className={`option-toggle ${motionBlur ? 'active' : ''}`} onClick={() => setMotionBlur(!motionBlur)}>{motionBlur ? 'ON' : 'OFF'}</button></div><div className="option-row"><span className="option-label">{t.options.music}</span><div className="volume-control"><input type="range" min="0" max="1" step="0.1" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} /><span style={{color: 'white', width: '30px'}}>{Math.round(volume * 100)}%</span></div></div><button className="menu-button back-btn" onClick={toggleOptions}>{t.options.back}</button></div>}
+      {showOptions && <div className="menu-overlay"><h2 className="pause-title">{t.options.title}</h2><div className="option-row"><span className="option-label">{t.options.lang}</span><button className="option-toggle" style={{width: '120px'}} onClick={cycleLanguage}>{TRANSLATIONS[language].name}</button></div><div className="option-row"><span className="option-label">{t.options.fullscreen}</span><button className={`option-toggle ${isFullscreen ? 'active' : ''}`} onClick={toggleFullscreen}>{isFullscreen ? 'ON' : 'OFF'}</button></div><div className="option-row"><span className="option-label">{t.options.blur}</span><button className={`option-toggle ${motionBlur ? 'active' : ''}`} onClick={() => setMotionBlur(!motionBlur)}>{motionBlur ? 'ON' : 'OFF'}</button></div><div className="option-row"><span className="option-label">{t.options.music}</span><div className="volume-control"><input type="range" min="0" max="1" step="0.1" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} /><span style={{color: 'white', width: '30px'}}>{Math.round(volume * 100)}%</span></div></div><button className="menu-button back-btn" onClick={toggleOptions}>{t.options.back}</button></div>}
       
       {isGameOver && (
         <div className="game-over-overlay">
@@ -639,21 +712,43 @@ const SpaceSurvivor = () => {
             <div style={{color: '#39ff14', fontSize: '1.5rem', marginBottom: '20px', textShadow: '0 0 10px #39ff14'}}>{t.gameover.scrap}: +{runScrap}</div>
             
             {/* Input para Leaderboard */}
-            <div style={{marginBottom: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+            <div style={{marginBottom: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', minHeight: '80px'}}>
                 <input 
                     type="text" 
                     placeholder={t.gameover.enterName}
                     value={playerName} 
                     onChange={(e) => setPlayerName(e.target.value)} 
                     maxLength="10"
-                    style={{padding: '10px', fontSize: '1rem', marginBottom: '10px', textAlign: 'center', background: 'rgba(0,0,0,0.5)', color: 'white', border: '1px solid #bc13fe'}}
+                    disabled={submitStatus === 'success'} 
+                    style={{
+                        padding: '10px', 
+                        fontSize: '1rem', 
+                        marginBottom: '10px', 
+                        textAlign: 'center', 
+                        background: 'rgba(0,0,0,0.5)', 
+                        color: 'white', 
+                        border: '1px solid #bc13fe',
+                        opacity: submitStatus === 'success' ? 0.5 : 1
+                    }}
                 />
-                {!scoreSubmitted ? (
-                    <button className="menu-button" style={{fontSize: '0.8rem', padding: '5px 20px', borderColor: '#bc13fe', color: '#bc13fe'}} onClick={submitScore}>
+                
+                {!submitStatus ? (
+                    <button 
+                        className="menu-button" 
+                        style={{fontSize: '0.8rem', padding: '5px 20px', borderColor: '#bc13fe', color: '#bc13fe'}} 
+                        onClick={submitScore}
+                    >
                         {t.gameover.submit}
                     </button>
                 ) : (
-                    <div style={{color: '#39ff14'}}>✔ SENT</div>
+                    <div style={{
+                        color: submitStatus === 'success' ? '#39ff14' : '#ff0055',
+                        fontWeight: 'bold',
+                        textShadow: submitStatus === 'success' ? '0 0 10px #39ff14' : '0 0 10px #ff0055',
+                        animation: 'fadeIn 0.5s'
+                    }}>
+                        {submitMessage}
+                    </div>
                 )}
             </div>
 
