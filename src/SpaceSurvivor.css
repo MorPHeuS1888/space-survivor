@@ -1,6 +1,16 @@
-/* ... (Mantém o CSS anterior para body, game-container, etc.) ... */
+/* =========================================
+   SPACE SURVIVOR - ESTILO CYBER-HUD
+   ========================================= */
 
-/* REPETINDO O BÁSICO PARA CONTEXTO */
+:root {
+  --primary: #00f0ff;    /* Ciano Neon (Cor principal) */
+  --secondary: #bc13fe;  /* Roxo (Detalhes) */
+  --danger: #ff2a2a;     /* Vermelho (Erro/Game Over) */
+  --gold: #39ff14;       /* Dinheiro */
+  --bg-dark: rgba(2, 8, 16, 0.95); /* Fundo dos menus */
+  --glass: rgba(0, 240, 255, 0.05); /* Efeito vidro */
+}
+
 body {
   margin: 0;
   height: 100vh;
@@ -8,154 +18,149 @@ body {
   justify-content: center;
   align-items: center;
   overflow: hidden;
+  background-color: #000;
   font-family: 'Courier New', Courier, monospace;
 }
 
+/* --- CONTENTOR PRINCIPAL DO JOGO --- */
 .game-container {
   width: 800px;
   height: 600px;
   position: relative;
-  border: 4px solid #555;
-  background-color: rgba(0, 0, 0, 0.3); 
-  box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+  /* Borda brilhante a condizer com o tema */
+  border: 2px solid var(--primary);
+  box-shadow: 0 0 30px rgba(0, 240, 255, 0.2); 
+  background-color: rgba(0, 0, 0, 0.5); 
 }
 
-.menu-overlay, .pause-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
+/* --- CANVAS --- */
+.game-canvas {
   width: 100%;
   height: 100%;
-  background-color: rgba(0, 0, 0, 0.85); /* Um pouco mais escuro para as opções */
+  position: absolute;
+  top: 0; left: 0;
+  z-index: 10;
+  cursor: crosshair; 
+}
+
+/* =========================================
+   MENUS E OVERLAYS
+   ========================================= */
+
+.menu-overlay, .pause-overlay, .game-over-overlay {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  
+  /* Fundo Gradiente Escuro "Space" */
+  background: radial-gradient(circle at center, rgba(10, 20, 40, 0.95), var(--bg-dark));
+  
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   z-index: 20;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(5px);
+  border: 1px solid rgba(0, 240, 255, 0.1);
 }
 
-/* --- ESTILOS DE TEXTO --- */
+/* --- TÍTULOS --- */
 .game-title {
-  font-size: 4rem;
-  color: #00ff00;
-  text-shadow: 4px 4px #003300;
-  margin-bottom: 50px;
+  font-size: 4.5rem;
+  color: var(--primary);
+  text-shadow: 
+    0 0 10px var(--primary),
+    0 0 20px var(--primary),
+    0 0 40px var(--secondary); /* Brilho duplo */
+  margin-bottom: 30px;
+  letter-spacing: 8px;
+  text-transform: uppercase;
+  font-weight: 800;
+  font-style: italic;
+  text-align: center;
+}
+
+.pause-title {
+  font-size: 3.5rem;
+  color: #fff;
+  text-shadow: 0 0 15px #fff;
+  border-bottom: 2px solid var(--primary);
+  padding-bottom: 10px;
+  margin-bottom: 30px;
   letter-spacing: 5px;
   text-transform: uppercase;
 }
 
-.pause-title {
-  font-size: 3rem;
-  color: white;
-  margin-bottom: 40px;
-  letter-spacing: 3px;
-  text-transform: uppercase;
-}
-
-/* --- BOTÕES NORMAIS --- */
+/* --- BOTÕES FUTURISTAS --- */
 .menu-button {
-  background: transparent;
-  color: white;
-  border: 2px solid white;
-  padding: 15px 40px;
-  font-size: 1.5rem;
+  background: linear-gradient(90deg, transparent 0%, rgba(0, 240, 255, 0.1) 50%, transparent 100%);
+  color: var(--primary);
+  border: 1px solid var(--primary);
+  border-left: 4px solid var(--primary);
+  border-right: 4px solid var(--primary);
+  
+  padding: 12px 30px;
+  font-size: 1.2rem;
   font-family: inherit;
-  margin: 10px;
+  font-weight: bold;
+  margin: 8px;
   cursor: pointer;
-  transition: all 0.2s;
-  width: 250px;
+  width: 280px;
   text-transform: uppercase;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.1);
 }
 
 .menu-button:hover {
-  background-color: #00ff00;
-  color: black;
-  border-color: #00ff00;
-  transform: scale(1.05);
-  box-shadow: 0 0 15px #00ff00;
+  background: var(--primary);
+  color: #000;
+  transform: scale(1.05) skewX(-5deg); /* Inclinação no hover */
+  box-shadow: 0 0 20px var(--primary);
 }
 
-/* --- NOVO: ESTILOS DAS OPÇÕES --- */
-.option-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 400px;
-  margin-bottom: 30px;
-  border-bottom: 1px solid #333;
-  padding-bottom: 10px;
+/* Botão de Voltar (Estilo avermelhado) */
+.menu-button.back-btn {
+  border-color: var(--danger);
+  color: var(--danger);
+  margin-top: 20px;
+}
+.menu-button.back-btn:hover {
+  background: var(--danger);
+  box-shadow: 0 0 20px var(--danger);
 }
 
-.option-label {
-  font-size: 1.5rem;
-  color: #aaa;
-}
+/* =========================================
+   HUD (DURANTE O JOGO)
+   ========================================= */
 
-.option-toggle {
-  background: transparent;
-  border: 2px solid #555;
-  color: #555;
-  padding: 5px 20px;
-  font-size: 1.2rem;
-  cursor: pointer;
-  font-family: inherit;
-  width: 100px;
-  transition: all 0.3s;
-}
-
-/* Estado Ativo (ON) */
-.option-toggle.active {
-  border-color: #00ff00;
-  color: #00ff00;
-  box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
-  text-shadow: 0 0 5px #00ff00;
-}
-
-/* Estado Inativo (Hover) */
-.option-toggle:not(.active):hover {
-  border-color: #fff;
-  color: #fff;
-}
-
-.back-btn {
-  margin-top: 30px;
-  border-color: #ff4444; /* Botão de voltar ligeiramente avermelhado */
-}
-
-.back-btn:hover {
-  background-color: #ff4444;
-  border-color: #ff4444;
-  color: white;
-  box-shadow: 0 0 15px #ff4444;
-}
-
-/* --- CANVAS --- */
-.game-canvas {
-  width: 800px;
-  height: 600px;
-  background-color: transparent;
-  position: absolute;
-  top: 0;
-  left: 0;
-  z-index: 10;
-  cursor: crosshair; 
-}
-
-/* --- HUD: Vidas (Esquerda) --- */
+/* Vidas (Corações) */
 .lives-display {
   position: absolute;
-  top: 20px;
-  left: 20px;
+  top: 20px; left: 20px;
   font-size: 2rem;
   z-index: 15;
-  color: #ff0055; /* Cor rosa/vermelha para os corações */
+  color: #ff0055;
   text-shadow: 0 0 10px #ff0055;
-  display: flex;
-  gap: 5px; /* Espaço entre os corações */
+  display: flex; gap: 5px;
 }
 
-/* Efeito quando a nave leva dano (O ecrã pisca vermelho) */
+/* Score e Dinheiro */
+.game-hud {
+  position: absolute;
+  top: 20px; right: 20px;
+  text-align: right;
+  z-index: 15;
+  pointer-events: none;
+  font-weight: bold;
+}
+
+.game-hud div:first-child { /* SCORE */
+  color: #fff;
+  font-size: 1.5rem;
+  text-shadow: 0 0 10px var(--primary);
+}
+
+/* Efeito de Dano (Flash Vermelho) */
 @keyframes damage-flash {
   0% { background-color: rgba(255, 0, 0, 0.3); }
   100% { background-color: transparent; }
@@ -163,112 +168,245 @@ body {
 
 .damage-effect {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
   pointer-events: none;
   z-index: 18;
   animation: damage-flash 0.2s ease-out;
 }
 
-/* --- HUD (Pontuação durante o jogo) --- */
-.game-hud {
-  position: absolute;
-  top: 20px;
-  right: 20px; /* Canto superior direito */
-  color: white;
-  font-size: 1.5rem;
-  z-index: 15; /* Acima do jogo, abaixo dos menus */
-  text-shadow: 0 0 10px #00ff00;
-  pointer-events: none; /* O rato ignora isto */
+/* =========================================
+   LOJA / HANGAR (COM SCROLL)
+   ========================================= */
+
+.hangar-overlay {
+  background-color: #050a10;
+  /* Grelha de fundo */
+  background-image: 
+    linear-gradient(rgba(0, 240, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+  border: 4px solid #111;
+  /* Garante que o menu não sai do ecrã */
+  padding: 20px 0; 
+  box-sizing: border-box;
 }
 
-/* --- GAME OVER SCREEN --- */
-.game-over-overlay {
-  position: absolute;
+/* Título das Secções */
+.shop-section-title {
+  width: 90%;
+  color: #fff;
+  font-size: 1rem;
+  border-bottom: 1px solid #333;
+  margin: 20px 0 10px 0;
+  padding-bottom: 5px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  text-align: left;
+}
+
+/* O CONTENTOR MÁGICO DO SCROLL */
+.shop-scroll-container {
+  width: 95%;
+  max-height: 400px; /* Altura máxima fixa */
+  overflow-y: auto;  /* Ativa o scroll se passar da altura */
+  overflow-x: hidden;
+  padding: 10px;
+  /* Estilização da Scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: var(--gold) #111;
+}
+
+/* Scrollbar para Chrome/Safari */
+.shop-scroll-container::-webkit-scrollbar {
+  width: 8px;
+}
+.shop-scroll-container::-webkit-scrollbar-track {
+  background: #111;
+}
+.shop-scroll-container::-webkit-scrollbar-thumb {
+  background-color: var(--gold); /* Verde Neon */
+  border-radius: 4px;
+}
+
+/* A Grelha de Cartões */
+.shop-grid {
+  display: flex;
+  flex-wrap: wrap; /* Permite várias linhas */
+  justify-content: center; /* Centra os cartões */
+  gap: 15px;
   width: 100%;
-  height: 100%;
-  background-color: rgba(50, 0, 0, 0.8); /* Fundo avermelhado */
+}
+
+.shop-card {
+  background: linear-gradient(180deg, rgba(0, 20, 30, 0.9) 0%, rgba(0, 5, 10, 0.95) 100%);
+  border: 1px solid #444;
+  border-top: 3px solid var(--primary);
+  border-radius: 6px;
+  
+  /* Tamanho Fixo para ficarem alinhados */
+  width: 160px; 
+  height: 220px;
+  
+  padding: 10px;
   display: flex;
   flex-direction: column;
-  justify-content: center;
   align-items: center;
-  z-index: 25; /* O mais alto de todos */
-  backdrop-filter: blur(5px);
-  border: 4px solid red; /* Borda vermelha de perigo */
+  text-align: center;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+  position: relative;
+}
+
+.shop-card:hover {
+  border-color: var(--gold);
+  transform: translateY(-2px);
+  box-shadow: 0 0 15px rgba(57, 255, 20, 0.2);
+}
+
+.shop-icon {
+  font-size: 2.5rem;
+  margin-bottom: 5px;
+}
+
+.shop-title {
+  color: var(--primary);
+  font-size: 0.9rem;
+  font-weight: bold;
+  margin-bottom: 5px;
+  height: 35px; /* Altura fixa para alinhar títulos de 2 linhas */
+  display: flex; align-items: center; justify-content: center;
+}
+
+.shop-desc {
+  color: #bbb;
+  font-size: 0.7rem;
+  margin-bottom: auto; /* Empurra o botão para o fundo */
+  line-height: 1.2;
+}
+
+.shop-btn {
+  background: rgba(0, 240, 255, 0.05);
+  border: 1px solid var(--primary);
+  color: var(--primary);
+  padding: 5px 0;
+  width: 100%;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 0.8rem;
+  margin-top: 10px;
+}
+
+.shop-btn:hover {
+  background: var(--primary);
+  color: #000;
+}
+
+/* =========================================
+   OPÇÕES E OUTROS
+   ========================================= */
+
+.option-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 350px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  padding-bottom: 10px;
+}
+
+.option-label {
+  font-size: 1.2rem;
+  color: var(--primary);
+}
+
+.option-toggle {
+  background: transparent;
+  border: 2px solid #555;
+  color: #555;
+  padding: 5px 15px;
+  font-size: 1rem;
+  cursor: pointer;
+  width: 80px;
+  transition: all 0.3s;
+}
+
+.option-toggle.active {
+  border-color: var(--primary);
+  color: var(--primary);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+}
+
+/* Slider de Volume */
+.volume-control { display: flex; align-items: center; gap: 10px; }
+
+input[type=range] {
+  appearance: none; -webkit-appearance: none;
+  width: 140px; background: transparent;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 15px; width: 15px;
+  background: var(--primary);
+  border: 2px solid #fff;
+  cursor: pointer;
+  margin-top: -5px;
+  box-shadow: 0 0 10px var(--primary);
+}
+input[type=range]::-webkit-slider-runnable-track {
+  width: 100%; height: 4px;
+  background: #444; border-radius: 2px;
+}
+
+/* =========================================
+   GAME OVER
+   ========================================= */
+
+.game-over-overlay {
+  border: 4px solid var(--danger);
+  background: rgba(20, 0, 0, 0.95);
 }
 
 .game-over-title {
   font-size: 5rem;
-  color: red;
-  text-shadow: 0 0 20px darkred;
+  color: var(--danger);
+  text-shadow: 0 0 30px var(--danger);
   margin-bottom: 20px;
   text-transform: uppercase;
-  letter-spacing: 10px;
+  letter-spacing: 5px;
+  animation: glitch 1s infinite;
 }
 
 .final-score {
   font-size: 2rem;
-  color: white;
-  margin-bottom: 40px;
+  color: #fff;
+  margin-bottom: 10px;
 }
 
 .new-record {
-  color: yellow;
+  color: var(--gold);
   font-size: 1.5rem;
   margin-bottom: 20px;
   animation: blink 1s infinite;
 }
 
-@keyframes blink {
-  0% { opacity: 1; }
-  50% { opacity: 0; }
-  100% { opacity: 1; }
-}
-
-/* Pequeno ajuste no Menu Principal para mostrar o High Score */
 .high-score-display {
   margin-top: 20px;
-  color: #ffff00;
+  color: var(--gold);
   font-size: 1.2rem;
-  text-shadow: 0 0 10px #ffff00;
+  text-shadow: 0 0 10px var(--gold);
 }
 
-/* --- SLIDER DE VOLUME --- */
-.volume-control {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+/* Animações Genéricas */
+@keyframes blink {
+  0% { opacity: 1; } 50% { opacity: 0; } 100% { opacity: 1; }
 }
 
-input[type=range] {
-  appearance: none;
-  -webkit-appearance: none; 
-  
-  width: 150px;
-  background: transparent;
-}
-
-input[type=range]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  height: 20px;
-  width: 20px;
-  background: #00ff00;
-  border: 2px solid white;
-  cursor: pointer;
-  margin-top: -8px; /* Centrar na linha */
-  box-shadow: 0 0 10px #00ff00;
-}
-
-input[type=range]::-webkit-slider-runnable-track {
-  width: 100%;
-  height: 4px;
-  cursor: pointer;
-  background: #555;
-  border-radius: 2px;
-}
-
-input[type=range]:focus {
-  outline: none;
+@keyframes glitch {
+  0% { transform: translate(0,0); }
+  20% { transform: translate(-2px, 2px); }
+  40% { transform: translate(-2px, -2px); }
+  60% { transform: translate(2px, 2px); }
+  80% { transform: translate(2px, -2px); }
+  100% { transform: translate(0,0); }
 }
