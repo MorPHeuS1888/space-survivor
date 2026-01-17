@@ -2,6 +2,10 @@ import React, { useRef, useEffect, useState } from 'react';
 import './SpaceSurvivor.css';
 import SpaceBackground from './SpaceBackground';
 
+// --- NOVOS COMPONENTES (Certifica-te que os criaste na pasta components) ---
+import Shop from './components/Shop';
+import Leaderboard from './components/Leaderboard';
+
 // --- FIREBASE IMPORTS ---
 import { db } from './firebase';
 import { collection, query, orderBy, limit, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
@@ -94,6 +98,7 @@ const SpaceSurvivor = () => {
     audio.play().catch(e => console.log("Erro som:", e));
   };
 
+  // --- LÓGICA DE FULLSCREEN (COM KEYBOARD LOCK) ---
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().then(() => {
@@ -126,35 +131,25 @@ const SpaceSurvivor = () => {
 
   // --- CORREÇÃO DO BUG DO TEMPO (FREEZE TIME) ---
   useEffect(() => {
-    // Se o jogo não está a correr ou acabou, não fazemos nada
     if (!isPlaying || isGameOver) return;
-
-    // Verifica se algum menu está aberto ou se está pausado
     const isInterrupted = isPaused || showOptions || showShop || showLeaderboard;
 
     if (isInterrupted) {
-        // O jogo parou: guardamos a hora atual
         pauseStartRef.current = Date.now();
     } else {
-        // O jogo voltou: calculamos quanto tempo esteve parado
         if (pauseStartRef.current > 0) {
             const timePaused = Date.now() - pauseStartRef.current;
-
-            // Adicionamos esse tempo aos contadores para "empurrá-los" para a frente
             gameState.current.tripleShotUntil += timePaused;
             gameState.current.invulnerableUntil += timePaused;
             gameState.current.nextEnemySpawnTime += timePaused;
-            // Também ajustamos o startTime para a dificuldade não aumentar enquanto estamos no menu
             gameState.current.startTime += timePaused;
-
-            // Reset da ref
             pauseStartRef.current = 0;
         }
     }
   }, [isPlaying, isGameOver, isPaused, showOptions, showShop, showLeaderboard]);
 
 
-  // --- INICIALIZAÇÃO ---
+  // --- EFEITOS DE INICIALIZAÇÃO ---
 
   useEffect(() => {
     const bgm = bgmRef.current;
@@ -167,20 +162,21 @@ const SpaceSurvivor = () => {
 
   useEffect(() => { bgmRef.current.volume = volume; }, [volume]);
 
+  // --- LÓGICA DE TECLAS ---
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
-        if (document.fullscreenElement) {
-            return;
-        }
+        // Se estiver em fullscreen, o lock deve impedir o ESC de sair,
+        // mas se o browser ignorar o lock, a tecla funciona na mesma para abrir o menu.
         if (showOptions) setShowOptions(false);
         else if (showLeaderboard) setShowLeaderboard(false);
+        else if (showShop) setShowShop(false);
         else if (isPlaying && !isGameOver) setIsPaused((prev) => !prev);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, showOptions, isGameOver, showLeaderboard]);
+  }, [isPlaying, showOptions, isGameOver, showLeaderboard, showShop]);
 
   useEffect(() => {
     const savedScore = localStorage.getItem('spaceSurvivorHighScore');
@@ -229,43 +225,64 @@ const SpaceSurvivor = () => {
   };
 
   const submitScore = async () => {
+      // 1. Validações básicas (impede envio se não houver nome, score for 0 ou já tiver enviado com sucesso)
       if (!playerName || score === 0 || submitStatus === 'success') return;
       
-      const cleanName = playerName.trim();
+      const cleanName = playerName.trim(); // Remove espaços antes e depois
       if (cleanName === "") return;
 
       try {
-          const scoreRef = doc(db, "scores", cleanName);
+          // 2. LÓGICA ANTI-DUPLICADOS
+          // Transformamos o nome em MAIÚSCULAS para usar como ID Único.
+          // Assim: "Tiago", "tiago" e "TIAGO" são tratados como a mesma pessoa.
+          const uniqueId = cleanName.toUpperCase(); 
+          
+          // Referência ao documento usando este ID único
+          const scoreRef = doc(db, "scores", uniqueId);
           const docSnap = await getDoc(scoreRef);
 
           let shouldSave = false;
 
           if (docSnap.exists()) {
+              // O jogador JÁ EXISTE na base de dados.
               const oldScore = docSnap.data().score;
+              
+              // Só atualizamos se o novo score for maior que o antigo
               if (score > oldScore) {
                   shouldSave = true; 
               } else {
+                  // CASO 1: Score é menor ou igual (Falha)
                   setSubmitStatus('fail');
                   setSubmitMessage(`${t.gameover.lowScore} (${oldScore})`);
+                  
+                  // Limpa a mensagem de erro após 3 segundos
                   setTimeout(() => {
                       setSubmitStatus(null);
                       setSubmitMessage('');
                   }, 3000);
-                  return; 
+                  return; // Sai da função sem gravar
               }
           } else {
+              // O jogador NÃO EXISTE (é a primeira vez), por isso gravamos.
               shouldSave = true;
           }
 
+          // 3. GRAVAR NA BASE DE DADOS
           if (shouldSave) {
               await setDoc(scoreRef, {
-                  name: cleanName,
+                  name: cleanName, // Guardamos o nome "bonito" (como o jogador escreveu) para exibir
                   score: score,
                   date: new Date()
               });
+              
+              // CASO 2: Sucesso
               setSubmitStatus('success');
               setSubmitMessage(t.gameover.saved);
+              
+              // Guarda o nome no navegador para a próxima vez
               localStorage.setItem('spaceSurvivorPlayerName', cleanName);
+              
+              // Se a tabela estiver aberta, atualiza-a imediatamente
               if (showLeaderboard) fetchLeaderboard();
           }
 
@@ -418,7 +435,7 @@ const SpaceSurvivor = () => {
       }
   };
 
-  // --- RENDER LOOP ---
+  // --- RENDER LOOP (JOGO) ---
   useEffect(() => {
     if (!isPlaying || isPaused || showOptions || showShop || isGameOver || showLeaderboard) return;
 
@@ -592,48 +609,13 @@ const SpaceSurvivor = () => {
     return () => { window.cancelAnimationFrame(animationFrameId); canvas.removeEventListener('mousemove', handleMouseMove); canvas.removeEventListener('mousedown', handleMouseDown); window.removeEventListener('mouseup', handleMouseUp); };
   }, [isPlaying, isPaused, showOptions, showShop, isGameOver, motionBlur, score, highScore, volume, hasTripleShot, upgrades, language, showLeaderboard]); 
 
-  const renderHearts = () => { let hearts = []; for (let i = 0; i < lives; i++) hearts.push(<span key={i}>♥</span>); return hearts; };
-
-  const renderPremiumCard = (key, keyName) => {
-    const status = upgrades[key]; 
-    const price = PRICES[key]();
-    const icons = { autofire: '🔫', magnet: '🧲', ricochet: '↩️' };
-    const itemData = t.shop.items[key] || { title: keyName, desc: "Upgrade" };
-    
-    let statusText = t.shop.notOwned;
-    let buttonText = `${t.shop.buy} $${price}`;
-    let buttonColor = null; let buttonBorder = null; let textColor = null;
-
-    if (status === 1) { 
-        statusText = t.shop.statusOff; buttonText = t.shop.equip; 
-        buttonColor = 'rgba(255, 255, 0, 0.1)'; buttonBorder = '#ffff00'; textColor = '#ffff00';
-    } else if (status === 2) { 
-        statusText = t.shop.statusOn; buttonText = t.shop.unequip; 
-        buttonColor = '#004400'; buttonBorder = '#39ff14'; textColor = '#39ff14';
-    }
-
-    return (
-        <div className="shop-card" key={key}>
-            <div className="shop-icon">{icons[key]}</div>
-            <div className="shop-title">{itemData.title}</div>
-            <div className="shop-desc" style={{color: status > 0 ? (status === 2 ? '#39ff14' : '#ffff00') : 'var(--primary)'}}>
-               {statusText}
-            </div>
-            <div className="shop-desc">{itemData.desc}</div>
-            <button className="shop-btn" onClick={() => buyUpgrade(key)} disabled={status === 0 && totalScrap < price} style={{ opacity: (status === 0 && totalScrap < price) ? 0.5 : 1, background: buttonColor, borderColor: buttonBorder, color: textColor }}>
-               {buttonText}
-            </button>
-        </div>
-    );
-  };
-
   return (
     <div className="game-container">
       <SpaceBackground />
       {takeDamageEffect && <div className="damage-effect"></div>}
       
       {isPlaying && !isGameOver && <div className="game-hud"><div>{t.hud.score}: {score}</div><div style={{color: '#39ff14', fontSize: '1.2rem', marginTop: '5px', textShadow: '0 0 5px #39ff14'}}>$ {runScrap}</div></div>}
-      {isPlaying && !isGameOver && <div className="lives-display" style={{flexWrap: 'wrap'}}>{renderHearts()}</div>}
+      {isPlaying && !isGameOver && <div className="lives-display" style={{flexWrap: 'wrap'}}>{Array.from({length: lives}).map((_, i) => <span key={i}>♥</span>)}</div>}
       {isPlaying && hasTripleShot && !isGameOver && <div style={{position: 'absolute', top: '60px', left: '20px', color: '#00f0ff', fontSize: '1.2rem', fontWeight: 'bold', textShadow: '0 0 10px #00f0ff'}}>⚡ {t.hud.triple}</div>}
 
       {!isPlaying && !showOptions && !showShop && !showLeaderboard && !isGameOver && (
@@ -647,62 +629,31 @@ const SpaceSurvivor = () => {
         </div>
       )}
 
+      {/* COMPONENTE LEADERBOARD */}
       {showLeaderboard && (
-        <div className="menu-overlay">
-            <h2 className="pause-title" style={{color: '#bc13fe', borderBottom: '2px solid #bc13fe', paddingBottom: '10px'}}>{t.leaderboard.title}</h2>
-            {isLoadingLeaderboard ? (
-                <div style={{color: 'white', margin: '20px'}}>{t.leaderboard.loading}</div>
-            ) : (
-                <div className="leaderboard-table" style={{width: '90%', maxHeight: '300px', overflowY: 'auto', marginBottom: '20px'}}>
-                    <table style={{width: '100%', color: 'white', borderCollapse: 'collapse'}}>
-                        <thead>
-                            <tr style={{borderBottom: '1px solid #555', color: '#bc13fe'}}>
-                                <th style={{textAlign:'left', padding:'5px'}}>{t.leaderboard.rank}</th>
-                                <th style={{textAlign:'left', padding:'5px'}}>{t.leaderboard.name}</th>
-                                <th style={{textAlign:'right', padding:'5px'}}>{t.leaderboard.score}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {leaderboardData.map((entry, index) => (
-                                <tr key={index} style={{borderBottom: '1px solid #222'}}>
-                                    <td style={{padding:'5px'}}>{index + 1}</td>
-                                    <td style={{padding:'5px'}}>{entry.name}</td>
-                                    <td style={{padding:'5px', textAlign:'right', color: '#39ff14'}}>{entry.score}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            )}
-            <button className="menu-button back-btn" onClick={() => setShowLeaderboard(false)}>{t.shop.back}</button>
-        </div>
+        <Leaderboard 
+            t={t} 
+            data={leaderboardData} 
+            isLoading={isLoadingLeaderboard} 
+            onClose={() => setShowLeaderboard(false)} 
+        />
       )}
 
+      {/* COMPONENTE SHOP */}
       {showShop && (
-        <div className="menu-overlay hangar-overlay">
-           <h2 className="pause-title" style={{color: '#39ff14', borderBottom: '2px solid #39ff14', paddingBottom: '10px', marginBottom: '10px'}}>{t.shop.title}</h2>
-           <div style={{marginBottom: '10px', color: '#fff', fontSize: '1.2rem'}}>{t.shop.credits}: <span style={{color: '#39ff14', fontWeight: 'bold'}}>$ {totalScrap}</span></div>
-           <div className="shop-scroll-container">
-              <div className="shop-grid">
-                  <div className="shop-card">
-                    <div className="shop-icon">🛡️</div>
-                    <div className="shop-title">{t.shop.items.lives.title}</div>
-                    <div className="shop-desc" style={{color: 'var(--primary)'}}>{t.shop.level} {upgrades.lives}</div>
-                    <div className="shop-desc">{t.shop.items.lives.desc}</div>
-                    <button className="shop-btn" onClick={() => buyUpgrade('lives')} disabled={totalScrap < PRICES.lives(upgrades.lives)} style={{ opacity: totalScrap < PRICES.lives(upgrades.lives) ? 0.5 : 1 }}>${PRICES.lives(upgrades.lives)}</button>
-                  </div>
-                  {renderPremiumCard('autofire', 'Auto-Fire')}
-                  {renderPremiumCard('magnet', 'Global Magnet')}
-                  {renderPremiumCard('ricochet', 'Ricochet')}
-              </div>
-           </div>
-           <button className="menu-button back-btn" onClick={() => setShowShop(false)} style={{marginTop: '15px'}}>{t.shop.back}</button>
-        </div>
+        <Shop 
+            t={t} 
+            upgrades={upgrades} 
+            totalScrap={totalScrap} 
+            buyUpgrade={buyUpgrade} 
+            onClose={() => setShowShop(false)} 
+        />
       )}
 
       {isPlaying && isPaused && !showOptions && !showShop && !isGameOver && (
         <div className="pause-overlay"><h2 className="pause-title">{t.pause.title}</h2><button className="menu-button" onClick={() => setIsPaused(false)}>{t.pause.continue}</button><button className="menu-button" onClick={toggleOptions}>{t.menu.options}</button><button className="menu-button" onClick={handleQuit}>{t.pause.exit}</button></div>
       )}
+      
       {showOptions && <div className="menu-overlay"><h2 className="pause-title">{t.options.title}</h2><div className="option-row"><span className="option-label">{t.options.lang}</span><button className="option-toggle" style={{width: '120px'}} onClick={cycleLanguage}>{TRANSLATIONS[language].name}</button></div><div className="option-row"><span className="option-label">{t.options.fullscreen}</span><button className={`option-toggle ${isFullscreen ? 'active' : ''}`} onClick={toggleFullscreen}>{isFullscreen ? 'ON' : 'OFF'}</button></div><div className="option-row"><span className="option-label">{t.options.blur}</span><button className={`option-toggle ${motionBlur ? 'active' : ''}`} onClick={() => setMotionBlur(!motionBlur)}>{motionBlur ? 'ON' : 'OFF'}</button></div><div className="option-row"><span className="option-label">{t.options.music}</span><div className="volume-control"><input type="range" min="0" max="1" step="0.1" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} /><span style={{color: 'white', width: '30px'}}>{Math.round(volume * 100)}%</span></div></div><button className="menu-button back-btn" onClick={toggleOptions}>{t.options.back}</button></div>}
       
       {isGameOver && (
@@ -711,7 +662,6 @@ const SpaceSurvivor = () => {
             <div className="final-score">{t.gameover.score}: {score}</div>
             <div style={{color: '#39ff14', fontSize: '1.5rem', marginBottom: '20px', textShadow: '0 0 10px #39ff14'}}>{t.gameover.scrap}: +{runScrap}</div>
             
-            {/* Input para Leaderboard */}
             <div style={{marginBottom: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', minHeight: '80px'}}>
                 <input 
                     type="text" 
