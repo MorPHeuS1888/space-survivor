@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import './SpaceSurvivor.css';
-import SpaceBackground from './SpaceBackground';
+import SpaceBackground from './components/SpaceBackground';
 
 // --- NOVOS COMPONENTES (Certifica-te que os criaste na pasta components) ---
 import Shop from './components/Shop';
@@ -79,7 +79,11 @@ const SpaceSurvivor = () => {
     startTime: 0,
     currentLives: 3,        
     invulnerableUntil: 0,
-    tripleShotUntil: 0
+    tripleShotUntil: 0,
+    comboMultiplier: 1,      // Começa em x1
+    comboTimer: 0,           // Tempo restante
+    maxComboTimer: 2500,     // 2.5 segundos para resetar
+    comboScale: 1
   });
 
   // --- FUNÇÕES AUXILIARES ---
@@ -373,6 +377,8 @@ const SpaceSurvivor = () => {
   const toggleOptions = () => setShowOptions(!showOptions);
 
   const handlePlayerDamage = () => {
+    gameState.current.comboMultiplier = 1;
+    gameState.current.comboTimer = 0;
     gameState.current.currentLives -= 1;
     setLives(gameState.current.currentLives);
     playSound(explodeFile);
@@ -425,10 +431,27 @@ const SpaceSurvivor = () => {
   const destroyEnemy = (enemy, index) => {
       if (!gameState.current.enemies[index]) return; 
       const dropX = enemy.x; const dropY = enemy.y;
+      
       gameState.current.enemies.splice(index, 1);
-      setScore(prev => prev + enemy.maxHp * 10);
+
+      // --- LÓGICA DE COMBO ---
+      // Aumenta o combo (Máximo x8 para não partir o jogo)
+      if (gameState.current.comboMultiplier < 8) {
+          gameState.current.comboMultiplier += 1;
+      }
+      // Reseta o temporizador do combo
+      gameState.current.comboTimer = gameState.current.maxComboTimer;
+      // Faz o texto dar um "pulo" visual
+      gameState.current.comboScale = 1.5; 
+
+      // Pontos com Multiplicador
+      const points = (enemy.maxHp * 10) * gameState.current.comboMultiplier;
+      setScore(prev => prev + points);
+      // -----------------------
+
       playSound(explodeFile);
       spawnScrap(dropX, dropY, enemy.maxHp);
+      
       if (Math.random() < (0.12 + ((enemy.maxHp - 1) * 0.1))) { 
           const type = Math.random() < 0.5 ? 'HEAL' : 'TRIPLE_SHOT';
           gameState.current.powerUps.push({ x: dropX + 5, y: dropY, width: 30, height: 30, speed: 2, type: type });
@@ -436,7 +459,9 @@ const SpaceSurvivor = () => {
   };
 
   // --- RENDER LOOP (JOGO) ---
+  // --- RENDER LOOP (LÓGICA DO JOGO + VISUAL) ---
   useEffect(() => {
+    // Se o jogo não estiver a correr, não desenha nada
     if (!isPlaying || isPaused || showOptions || showShop || isGameOver || showLeaderboard) return;
 
     const canvas = canvasRef.current;
@@ -447,31 +472,58 @@ const SpaceSurvivor = () => {
       const now = Date.now();
       const isInvulnerable = now < gameState.current.invulnerableUntil;
       const tripleShotActive = now < gameState.current.tripleShotUntil;
+
+      // 1. --- ATUALIZAR LÓGICA DO COMBO ---
+      if (gameState.current.comboMultiplier > 1) {
+          gameState.current.comboTimer -= 16; // Reduz o tempo (~1 frame a 60fps)
+          
+          // Se o tempo acabar, reseta o combo
+          if (gameState.current.comboTimer <= 0) {
+              gameState.current.comboMultiplier = 1; 
+          }
+      }
+      
+      // Animação suave de "pulo" (volta ao tamanho normal 1.0)
+      if (gameState.current.comboScale > 1) {
+          gameState.current.comboScale -= 0.05;
+      }
+
+      // Sincroniza estado visual do Triple Shot
       if (tripleShotActive !== hasTripleShot) setHasTripleShot(tripleShotActive);
 
+      // Lógica de Auto-Fire
       if (upgrades.autofire === 2 && gameState.current.isFiring) {
           shoot();
       }
 
+      // 2. --- SPAWN DE INIMIGOS (DIFICULDADE DINÂMICA) ---
       if (now > gameState.current.nextEnemySpawnTime) {
           const timeElapsed = now - gameState.current.startTime;
-          const difficultyFactor = (timeElapsed / 500) + (score * 0.5);
+          // Dificuldade aumenta com o tempo e com o score
+          const difficultyFactor = (timeElapsed / 500) + (score * 0.2);
+          
           let targetDelay = 1500 - difficultyFactor;
-          const minDelay = 300; 
+          const minDelay = 300; // Limite mínimo de spawn (não spawna mais rápido que 300ms)
+          
           let spawnCount = 1;
+          
+          // Se o delay for muito baixo, começa a spawnar grupos de inimigos
           if (targetDelay < minDelay) {
               const excessDifficulty = minDelay - targetDelay;
               targetDelay = minDelay;
               spawnCount = 1 + Math.floor(excessDifficulty / 500);
           }
-          spawnCount = Math.min(spawnCount, 10);
+          spawnCount = Math.min(spawnCount, 10); // Limite máximo de inimigos por onda
 
           for (let i = 0; i < spawnCount; i++) {
                const randomVx = (Math.random() - 0.5) * 6;
                const baseSpeed = 2 + (timeElapsed / 60000); 
-               const yOffset = i * -60; 
+               const yOffset = i * -60; // Espalha verticalmente se forem muitos
+               
                const randType = Math.random();
                let hp = 1; let width = 40; let color = '#bc13fe'; let speedMultiplier = 1;
+               
+               // Tipos de inimigos (Normal, Laranja Resistente, Vermelho Tanque)
                if (randType >= 0.70 && randType < 0.90) { hp = 3; width = 50; color = '#ff8800'; speedMultiplier = 0.8; } 
                else if (randType >= 0.90) { hp = 5; width = 70; color = '#ff0000'; speedMultiplier = 0.5; }
 
@@ -483,37 +535,48 @@ const SpaceSurvivor = () => {
                   vx: randomVx, hp: hp, maxHp: hp, color: color, hitFlash: 0      
               });
           }
+          // Agenda o próximo spawn
           gameState.current.nextEnemySpawnTime = now + targetDelay + (Math.random() * 200);
       }
 
+      // 3. --- LIMPAR O ECRÃ (COM OU SEM MOTION BLUR) ---
       if (motionBlur) {
-        ctx.save(); ctx.globalCompositeOperation = 'destination-out'; ctx.fillStyle = 'rgba(0, 0, 0, 0.2)'; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT); ctx.restore();
+        ctx.save(); 
+        ctx.globalCompositeOperation = 'destination-out'; 
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.2)'; // Deixa rasto
+        ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT); 
+        ctx.restore();
       } else {
         ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
       }
 
+      // 4. --- DESENHAR E ATUALIZAR SCRAPS (DINHEIRO) ---
       gameState.current.scraps.forEach((scrap, sIndex) => {
           const dx = gameState.current.playerX - scrap.x;
           const dy = gameState.current.playerY - scrap.y;
           const distance = Math.hypot(dx, dy);
 
+          // Lógica do Íman
           if (distance < gameState.current.magnetRange || scrap.isMagnetized) {
               scrap.isMagnetized = true; 
               const homingSpeed = 12; 
               scrap.vx = (dx / distance) * homingSpeed;
               scrap.vy = (dy / distance) * homingSpeed;
           } else {
-              scrap.vy += 0.1; scrap.vx *= 0.95; 
+              scrap.vy += 0.1; scrap.vx *= 0.95; // Gravidade simples
           }
           scrap.x += scrap.vx; scrap.y += scrap.vy;
 
+          // Desenho do Scrap (Verde Neon)
           ctx.save(); ctx.translate(scrap.x, scrap.y); ctx.fillStyle = '#39ff14';
           ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo(6, 0); ctx.lineTo(0, 6); ctx.lineTo(-6, 0); ctx.closePath(); ctx.fill();
           if (scrap.isMagnetized) { ctx.shadowBlur = 10; ctx.shadowColor = '#39ff14'; ctx.stroke(); ctx.shadowBlur = 0; }
           ctx.restore();
 
+          // Remover se sair do ecrã
           if (!scrap.isMagnetized && scrap.y > GAME_HEIGHT + 50) gameState.current.scraps.splice(sIndex, 1);
 
+          // Colisão com Jogador
           const pRect = { x: gameState.current.playerX - 20, y: gameState.current.playerY, width: 40, height: 30 };
           const sRect = { x: scrap.x - 6, y: scrap.y - 6, width: 12, height: 12 };
           if (checkCollision(pRect, sRect)) {
@@ -523,11 +586,24 @@ const SpaceSurvivor = () => {
           }
       });
 
+      // 5. --- DESENHAR E ATUALIZAR POWER-UPS ---
       gameState.current.powerUps.forEach((pu, index) => {
           pu.y += pu.speed; 
-          if (pu.type === 'HEAL') { ctx.fillStyle = '#ff0055'; ctx.beginPath(); ctx.arc(pu.x + 15, pu.y + 15, 15, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = 'white'; ctx.fillRect(pu.x + 12, pu.y + 5, 6, 20); ctx.fillRect(pu.x + 5, pu.y + 12, 20, 6); }
-          else if (pu.type === 'TRIPLE_SHOT') { ctx.fillStyle = '#00f0ff'; ctx.beginPath(); ctx.moveTo(pu.x + 15, pu.y); ctx.lineTo(pu.x + 30, pu.y + 15); ctx.lineTo(pu.x + 15, pu.y + 30); ctx.lineTo(pu.x, pu.y + 15); ctx.closePath(); ctx.fill(); ctx.fillStyle = 'black'; ctx.font = '20px Arial'; ctx.fillText('⚡', pu.x + 8, pu.y + 22); }
+          
+          if (pu.type === 'HEAL') { 
+              // Desenha Coração
+              ctx.fillStyle = '#ff0055'; ctx.beginPath(); ctx.arc(pu.x + 15, pu.y + 15, 15, 0, Math.PI * 2); ctx.fill(); 
+              ctx.fillStyle = 'white'; ctx.fillRect(pu.x + 12, pu.y + 5, 6, 20); ctx.fillRect(pu.x + 5, pu.y + 12, 20, 6); 
+          }
+          else if (pu.type === 'TRIPLE_SHOT') { 
+              // Desenha Triângulo/Raio
+              ctx.fillStyle = '#00f0ff'; ctx.beginPath(); ctx.moveTo(pu.x + 15, pu.y); ctx.lineTo(pu.x + 30, pu.y + 15); ctx.lineTo(pu.x + 15, pu.y + 30); ctx.lineTo(pu.x, pu.y + 15); ctx.closePath(); ctx.fill(); 
+              ctx.fillStyle = 'black'; ctx.font = '20px Arial'; ctx.fillText('⚡', pu.x + 8, pu.y + 22); 
+          }
+          
           if (pu.y > GAME_HEIGHT) gameState.current.powerUps.splice(index, 1);
+          
+          // Colisão Power-up
           if (checkCollision({ x: gameState.current.playerX - 20, y: gameState.current.playerY, width: 40, height: 30 }, pu)) {
               playSound(powerupFile); 
               if (pu.type === 'HEAL') { gameState.current.currentLives += 1; setLives(gameState.current.currentLives); }
@@ -536,63 +612,152 @@ const SpaceSurvivor = () => {
           }
       });
 
+      // 6. --- TIROS DO JOGADOR (PROJÉTEIS) ---
       ctx.fillStyle = '#00f0ff'; ctx.shadowBlur = 10; ctx.shadowColor = '#00f0ff';
       gameState.current.projectiles.forEach((proj, pIndex) => {
-        const bulletSpeed = 10; 
-        proj.y -= bulletSpeed;
+        proj.y -= 10; // Velocidade da bala
         if (proj.vx) proj.x += proj.vx; 
 
+        // Lógica de RICOCHET
         if (upgrades.ricochet === 2 && !proj.hasRicocheted) {
-             if (proj.x < 0 || proj.x > GAME_WIDTH) { proj.vx = -proj.vx; proj.hasRicocheted = true; }
+             if (proj.x < 0 || proj.x > GAME_WIDTH) { 
+                 proj.vx = -proj.vx; 
+                 proj.hasRicocheted = true; 
+             }
         }
+        
         ctx.fillRect(proj.x - 2, proj.y, 4, 15);
-        if (proj.y < -50 || (upgrades.ricochet !== 2 && (proj.x < 0 || proj.x > GAME_WIDTH))) gameState.current.projectiles.splice(pIndex, 1);
+        
+        // Remove balas fora do ecrã
+        if (proj.y < -50 || (upgrades.ricochet !== 2 && (proj.x < 0 || proj.x > GAME_WIDTH))) {
+            gameState.current.projectiles.splice(pIndex, 1);
+        }
       });
       ctx.shadowBlur = 0;
 
+      // 7. --- INIMIGOS E COLISÕES ---
       gameState.current.enemies.forEach((enemy, eIndex) => {
-        let moveSpeed = enemy.speed;
-        enemy.y += moveSpeed;
+        enemy.y += enemy.speed;
         enemy.x += enemy.vx;
-        if (enemy.x <= 0 || enemy.x + enemy.width >= GAME_WIDTH) enemy.vx = -enemy.vx;
-        if (enemy.y > 0 && Math.random() < 0.005) gameState.current.enemyProjectiles.push({ x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height, width: 6, height: 12, speed: 6 });
         
+        // Bater nas paredes (Inimigos)
+        if (enemy.x <= 0 || enemy.x + enemy.width >= GAME_WIDTH) enemy.vx = -enemy.vx;
+        
+        // Inimigos disparam (Chance aleatória)
+        if (enemy.y > 0 && Math.random() < 0.005) {
+            gameState.current.enemyProjectiles.push({ x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height, width: 6, height: 12, speed: 6 });
+        }
+        
+        // Desenha Inimigo (Flash branco se levar tiro)
         const drawColor = (enemy.hitFlash > 0) ? '#ffffff' : enemy.color;
         if (enemy.hitFlash > 0) enemy.hitFlash--;
-        const cx = enemy.x + enemy.width / 2; const cy = enemy.y + enemy.height / 2; const radius = enemy.width / 2; const currentSides = enemy.hp + 3;
-        if (currentSides === 4) { ctx.fillStyle = drawColor; ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height); } else { drawPolygon(ctx, cx, cy, radius, currentSides, drawColor); }
+        
+        const cx = enemy.x + enemy.width / 2; const cy = enemy.y + enemy.height / 2; 
+        const radius = enemy.width / 2; const currentSides = enemy.hp + 3;
+        
+        if (currentSides === 4) { 
+            ctx.fillStyle = drawColor; ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height); 
+        } else { 
+            drawPolygon(ctx, cx, cy, radius, currentSides, drawColor); 
+        }
+        // Olho do inimigo
         ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(cx, cy, radius / 3, 0, Math.PI*2); ctx.fill();
+        
+        // Remover inimigo fora do ecrã
         if (enemy.y > GAME_HEIGHT) gameState.current.enemies.splice(eIndex, 1);
-        if (!isInvulnerable && checkCollision({ x: gameState.current.playerX - 20, y: gameState.current.playerY, width: 40, height: 30 }, enemy)) { handlePlayerDamage(); gameState.current.enemies.splice(eIndex, 1); }
+        
+        // COLISÃO: JOGADOR vs INIMIGO
+        if (!isInvulnerable && checkCollision({ x: gameState.current.playerX - 20, y: gameState.current.playerY, width: 40, height: 30 }, enemy)) { 
+            handlePlayerDamage(); 
+            gameState.current.enemies.splice(eIndex, 1); 
+        }
 
+        // COLISÃO: BALA vs INIMIGO
         gameState.current.projectiles.forEach((proj, pIndex) => {
             if (checkCollision({ x: proj.x - 2, y: proj.y, width: 4, height: 15 }, enemy)) {
-                gameState.current.projectiles.splice(pIndex, 1);
+                gameState.current.projectiles.splice(pIndex, 1); // Remove bala
                 enemy.hp -= 1; enemy.hitFlash = 3; 
-                if (enemy.hp <= 0) destroyEnemy(enemy, eIndex); else { enemy.y -= 5; enemy.x += (Math.random() - 0.5) * 5; }
+                
+                if (enemy.hp <= 0) {
+                    destroyEnemy(enemy, eIndex); // Mata inimigo
+                } else { 
+                    // Knockback (Empurrão)
+                    enemy.y -= 5; enemy.x += (Math.random() - 0.5) * 5; 
+                }
             }
         });
       });
 
+      // 8. --- TIROS DOS INIMIGOS ---
       ctx.fillStyle = '#ffcc00';
       gameState.current.enemyProjectiles.forEach((eProj, epIndex) => {
-          let bSpeed = eProj.speed;
-          eProj.y += bSpeed; ctx.fillRect(eProj.x - 3, eProj.y, eProj.width, eProj.height);
+          eProj.y += eProj.speed; 
+          ctx.fillRect(eProj.x - 3, eProj.y, eProj.width, eProj.height);
+          
           if (eProj.y > GAME_HEIGHT) gameState.current.enemyProjectiles.splice(epIndex, 1);
-          if (!isInvulnerable && checkCollision({ x: gameState.current.playerX - 20, y: gameState.current.playerY, width: 40, height: 30 }, eProj)) { handlePlayerDamage(); gameState.current.enemyProjectiles.splice(epIndex, 1); }
+          
+          if (!isInvulnerable && checkCollision({ x: gameState.current.playerX - 20, y: gameState.current.playerY, width: 40, height: 30 }, eProj)) { 
+              handlePlayerDamage(); 
+              gameState.current.enemyProjectiles.splice(epIndex, 1); 
+          }
       });
 
+      // 9. --- DESENHAR COMBO HUD (O DIAMANTE NÉON) ---
+      if (gameState.current.comboMultiplier > 1) {
+          const combo = gameState.current.comboMultiplier;
+          const cx = GAME_WIDTH / 2;
+          const cy = 70; 
+
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.scale(gameState.current.comboScale, gameState.current.comboScale);
+          
+          // Diamante Fundo
+          ctx.beginPath();
+          ctx.moveTo(0, -35); ctx.lineTo(50, 0); ctx.lineTo(0, 35); ctx.lineTo(-50, 0); 
+          ctx.closePath();
+          ctx.fillStyle = 'rgba(20, 0, 50, 0.8)'; ctx.fill();
+          ctx.lineWidth = 3; ctx.strokeStyle = '#00f0ff'; ctx.stroke();
+
+          // Texto "xN"
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.font = '900 40px "Arial Black", Arial, sans-serif';
+          ctx.fillStyle = '#000'; ctx.fillText(`x${combo}`, 4, 4); 
+          ctx.fillStyle = '#ffff00'; ctx.shadowBlur = 0; ctx.fillText(`x${combo}`, 0, 0);
+          
+          // Etiqueta "COMBO"
+          ctx.fillStyle = '#00f0ff'; ctx.fillRect(-30, 40, 60, 16);
+          ctx.fillStyle = '#000'; ctx.font = 'bold 12px Arial';
+          ctx.fillText(t?.hud?.combo || "COMBO", 0, 48);
+          
+          ctx.restore();
+      }
+
+      // 10. --- DESENHAR O JOGADOR ---
       if (!isGameOver) {
           const x = gameState.current.playerX; const y = gameState.current.playerY;
+          
+          // Piscar se estiver invulnerável
           if (isInvulnerable && Math.floor(Date.now() / 100) % 2 === 0) ctx.globalAlpha = 0.5;
+          
+          // Nave Principal
           ctx.fillStyle = '#00f0ff'; ctx.shadowBlur = 15; ctx.shadowColor = '#00f0ff';
           ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 20, y + 30); ctx.lineTo(x + 20, y + 30); ctx.closePath(); ctx.fill();
-          ctx.shadowBlur = 0; ctx.fillStyle = '#fff'; ctx.fillRect(x - 2, y + 10, 4, 4); ctx.globalAlpha = 1.0; 
+          
+          // Cockpit / Detalhe
+          ctx.shadowBlur = 0; ctx.fillStyle = '#fff'; ctx.fillRect(x - 2, y + 10, 4, 4); 
+          
+          ctx.globalAlpha = 1.0; 
       }
+      
+      // Loop
       animationFrameId = window.requestAnimationFrame(render);
     };
+    
+    // Inicia o loop
     render();
 
+    // --- INPUT HANDLING (Rato) ---
     const handleMouseMove = (e) => {
       if (isPaused || showOptions || showShop || isGameOver || showLeaderboard) return;
       const rect = canvas.getBoundingClientRect();
@@ -605,10 +770,18 @@ const SpaceSurvivor = () => {
     };
     const handleMouseUp = () => { gameState.current.isFiring = false; };
 
-    canvas.addEventListener('mousemove', handleMouseMove); canvas.addEventListener('mousedown', handleMouseDown); window.addEventListener('mouseup', handleMouseUp);
-    return () => { window.cancelAnimationFrame(animationFrameId); canvas.removeEventListener('mousemove', handleMouseMove); canvas.removeEventListener('mousedown', handleMouseDown); window.removeEventListener('mouseup', handleMouseUp); };
-  }, [isPlaying, isPaused, showOptions, showShop, isGameOver, motionBlur, score, highScore, volume, hasTripleShot, upgrades, language, showLeaderboard]); 
-
+    canvas.addEventListener('mousemove', handleMouseMove); 
+    canvas.addEventListener('mousedown', handleMouseDown); 
+    window.addEventListener('mouseup', handleMouseUp);
+    
+    // Limpeza ao desmontar
+    return () => { 
+        window.cancelAnimationFrame(animationFrameId); 
+        canvas.removeEventListener('mousemove', handleMouseMove); 
+        canvas.removeEventListener('mousedown', handleMouseDown); 
+        window.removeEventListener('mouseup', handleMouseUp); 
+    };
+  }, [isPlaying, isPaused, showOptions, showShop, isGameOver, motionBlur, score, highScore, volume, hasTripleShot, upgrades, language, showLeaderboard]);
   return (
     <div className="game-container">
       <SpaceBackground />
