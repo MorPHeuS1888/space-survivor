@@ -4,7 +4,7 @@ import SpaceBackground from './SpaceBackground';
 
 // --- FIREBASE IMPORTS ---
 import { db } from './firebase';
-import { collection, addDoc, query, orderBy, limit, getDocs } from 'firebase/firestore';
+import { collection, query, orderBy, limit, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
 
 // --- OUTROS IMPORTS ---
 import { TRANSLATIONS } from './i18n';
@@ -143,19 +143,52 @@ const SpaceSurvivor = () => {
   };
 
   const submitScore = async () => {
+      // Validações básicas
       if (!playerName || score === 0 || scoreSubmitted) return;
       
+      // Limpar o nome para usar como ID (remove espaços extra)
+      const cleanName = playerName.trim();
+      if (cleanName === "") return;
+
       try {
-          await addDoc(collection(db, "scores"), {
-              name: playerName,
-              score: score,
-              date: new Date()
-          });
-          setScoreSubmitted(true);
-          localStorage.setItem('spaceSurvivorPlayerName', playerName); // Save name for next time
-          alert("Score Submitted!");
+          // Referência ao documento usando o NOME como ID
+          const scoreRef = doc(db, "scores", cleanName);
+          const docSnap = await getDoc(scoreRef);
+
+          let shouldSave = false;
+
+          if (docSnap.exists()) {
+              // O jogador já existe! Vamos ver se o score novo é melhor.
+              const oldScore = docSnap.data().score;
+              if (score > oldScore) {
+                  shouldSave = true; // Bateste o teu recorde pessoal!
+              } else {
+                  alert("Não bateste o teu recorde pessoal (" + oldScore + ").");
+                  setScoreSubmitted(true); // Bloqueia o botão na mesma
+                  return; 
+              }
+          } else {
+              // Jogador novo
+              shouldSave = true;
+          }
+
+          if (shouldSave) {
+              await setDoc(scoreRef, {
+                  name: cleanName,
+                  score: score,
+                  date: new Date()
+              });
+              setScoreSubmitted(true);
+              localStorage.setItem('spaceSurvivorPlayerName', cleanName);
+              alert("Recorde Guardado!");
+              
+              // Atualizar a tabela localmente se estiver aberta (opcional)
+              if (showLeaderboard) fetchLeaderboard();
+          }
+
       } catch (e) {
-          console.error("Error adding document: ", e);
+          console.error("Erro ao gravar score: ", e);
+          alert("Erro ao conectar ao servidor.");
       }
   };
 
